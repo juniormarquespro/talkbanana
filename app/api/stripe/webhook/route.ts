@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient as createServerClient } from "@supabase/supabase-js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-
 function getSupabaseAdmin() {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,6 +16,7 @@ function planoFromPriceId(priceId: string): string {
 }
 
 export async function POST(req: NextRequest) {
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
   const body = await req.text();
   const sig = req.headers.get("stripe-signature")!;
 

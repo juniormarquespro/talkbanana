@@ -2,15 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@/lib/supabase/server";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
-const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://talkbanana.com";
-
-const PRICE_IDS: Record<string, string> = {
-  mensal: process.env.STRIPE_PRICE_MENSAL!,
-  anual: process.env.STRIPE_PRICE_ANUAL!,
-};
-
 export async function POST(req: NextRequest) {
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+  const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://talkbanana.com";
+  const PRICE_IDS: Record<string, string> = {
+    mensal: process.env.STRIPE_PRICE_MENSAL!,
+    anual: process.env.STRIPE_PRICE_ANUAL!,
+  };
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Não autenticado" }, { status: 401 });

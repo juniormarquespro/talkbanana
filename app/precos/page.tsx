@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import PrecosClient from "./PrecosClient";
 
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Planos" };
 
 export default async function PrecosPage() {
