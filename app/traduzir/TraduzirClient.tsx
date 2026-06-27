@@ -491,9 +491,20 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
           <div className="flex flex-col items-center gap-4">
 
             {/* Wave bars acima do botão */}
-            <div className="wave-bars" style={{ opacity: isRecording ? 1 : 0.28 }}>
+            <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 32, opacity: isRecording ? 1 : 0.3, transition: "opacity 0.3s" }}>
               {[0, 0.15, 0.3, 0.45, 0.3, 0.15, 0].map((delay, i) => (
-                <span key={i} className={isRecording ? "wave-active" : "wave-idle"} style={{ animationDelay: `${delay}s` }} />
+                <span key={i} style={{
+                  display: "block",
+                  width: 4,
+                  height: 6,
+                  borderRadius: 3,
+                  background: isRecording ? "#dc3232" : "#c9a84c",
+                  animationName: isRecording ? "waveActive" : "waveIdle",
+                  animationDuration: isRecording ? "0.65s" : "1.8s",
+                  animationTimingFunction: "ease-in-out",
+                  animationIterationCount: "infinite",
+                  animationDelay: `${delay}s`,
+                }} />
               ))}
             </div>
 
@@ -653,30 +664,9 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
       </main>
 
       <style>{`
-        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
-
-        .wave-bars {
-          display: flex;
-          align-items: flex-end;
-          gap: 4px;
-          height: 28px;
-          transition: opacity 0.3s ease;
-        }
-        .wave-bars span {
-          width: 4px;
-          border-radius: 3px;
-          background: #c9a84c;
-          display: block;
-        }
-        .wave-bars span.wave-idle {
-          animation: wave-idle 1.8s ease-in-out infinite;
-        }
-        .wave-bars span.wave-active {
-          background: #dc3232;
-          animation: wave-active 0.65s ease-in-out infinite;
-        }
-        @keyframes wave-idle   { 0%,100% { height: 5px; }  50% { height: 16px; } }
-        @keyframes wave-active { 0%,100% { height: 8px; }  50% { height: 28px; } }
+        @keyframes blink      { 0%,100%{opacity:1}  50%{opacity:0.3} }
+        @keyframes waveIdle   { 0%,100%{height:5px} 50%{height:16px} }
+        @keyframes waveActive { 0%,100%{height:8px} 50%{height:32px} }
       `}</style>
     </div>
   );
