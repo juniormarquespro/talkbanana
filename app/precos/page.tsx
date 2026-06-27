@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { PACKS_CREDITOS } from "@/lib/planos";
 import PrecosClient from "./PrecosClient";
 
 export const dynamic = "force-dynamic";
@@ -12,9 +13,20 @@ export default async function PrecosPage() {
 
   const { data: perfil } = await supabase
     .from("perfis")
-    .select("plano, stripe_customer_id")
+    .select("plano, stripe_customer_id, creditos")
     .eq("id", user.id)
     .single();
 
-  return <PrecosClient planoAtual={perfil?.plano ?? "gratuito"} hasStripeCustomer={!!perfil?.stripe_customer_id} />;
+  const packs = PACKS_CREDITOS.map(({ id, label, creditos, preco }) => ({
+    id, label, creditos, preco,
+  }));
+
+  return (
+    <PrecosClient
+      planoAtual={perfil?.plano ?? "gratuito"}
+      hasStripeCustomer={!!perfil?.stripe_customer_id}
+      creditosAtuais={perfil?.creditos ?? 0}
+      packs={packs}
+    />
+  );
 }

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 :root {
-  --color-primary: 247 198 19;
+  --color-primary: 255 193 7;
   --color-accent:  201 168 76;
   --color-bg:      10 8 0;
   --color-surface: 18 14 0;
@@ -14,7 +14,7 @@
 body {
   color: rgb(var(--color-text));
   background: rgb(var(--color-bg));
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: var(--font-poppins), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
@@ -69,3 +69,5 @@ body {
   box-shadow: 0 0 0 2px rgba(247,198,19,0.12);
 }
 .input-base::placeholder { color: rgba(201,168,76,0.4); }
+
+@keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }

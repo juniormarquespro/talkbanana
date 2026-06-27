@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { isAdmin } from "@/lib/is-admin";
 import TraduzirClient from "./TraduzirClient";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +18,7 @@ export default async function TraduzirPage() {
     .single();
 
   const isPro = perfil?.plano === "pro_mensal" || perfil?.plano === "pro_anual";
-  const creditos = isPro ? null : (perfil?.creditos ?? 0);
+  const creditos = perfil?.creditos ?? 0;
 
-  return <TraduzirClient creditosIniciais={creditos} isPro={isPro} />;
+  return <TraduzirClient creditosIniciais={creditos} isPro={isPro} isAdmin={isAdmin(user.email)} />;
 }

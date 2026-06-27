@@ -2,6 +2,9 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
+import ReloadButton from "@/components/ReloadButton";
+import { usePreventNavigation } from "@/hooks/usePreventNavigation";
+import { Logo } from "@/components/Logo";
 
 const IDIOMAS = [
   { value: "Português", label: "🇧🇷 Português" },
@@ -15,27 +18,42 @@ const IDIOMAS = [
   { value: "Chinês simplificado", label: "🇨🇳 中文" },
 ];
 
+type VoiceGender = "feminino" | "masculino";
+const VOICE_MAP: Record<VoiceGender, string> = { feminino: "nova", masculino: "onyx" };
+
 interface Props {
-  creditosIniciais: number | null;
+  creditosIniciais: number;
   isPro: boolean;
+  isAdmin: boolean;
 }
 
-export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
+export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Props) {
   const [sourceLang, setSourceLang] = useState("Português");
   const [targetLang, setTargetLang] = useState("English");
   const [creditos, setCreditos] = useState(creditosIniciais);
-  const [semCreditos, setSemCreditos] = useState(!isPro && (creditosIniciais ?? 0) <= 0);
+  const [semCreditos, setSemCreditos] = useState(creditosIniciais <= 0);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState("Pronto para gravar");
   const [statusType, setStatusType] = useState<"idle" | "recording" | "processing" | "done" | "error">("idle");
-  const [result, setResult] = useState<{ transcript: string; translation: string; audio?: string; from?: string; to?: string } | null>(null);
+  const [result, setResult] = useState<{ transcript: string; translation: string; transliteration?: string; audio?: string; from?: string; to?: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [noiseOn, setNoiseOn] = useState(true);
   const [gateLevel, setGateLevel] = useState(50);
   const [speed, setSpeed] = useState(1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [timer, setTimer] = useState("");
+  const [voiceA, setVoiceA] = useState<VoiceGender>("feminino");
+  const [voiceB, setVoiceB] = useState<VoiceGender>("masculino");
+  // refs para evitar closure desatualizada no useCallback
+  const voiceARef = useRef<VoiceGender>("feminino");
+  const voiceBRef = useRef<VoiceGender>("masculino");
+  const sourceLangRef = useRef(sourceLang);
+  const targetLangRef = useRef(targetLang);
+  voiceARef.current = voiceA;
+  voiceBRef.current = voiceB;
+  sourceLangRef.current = sourceLang;
+  targetLangRef.current = targetLang;
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -45,18 +63,20 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const maxDurationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startMsRef = useRef(0);
-  const isToggleRef = useRef(false);
   const stopRequestedRef = useRef(false);
   const awaitingStreamRef = useRef(false);
   const unlockedAudioRef = useRef<HTMLAudioElement | null>(null);
+  const lastPressRef = useRef(0);
 
   function startTimer() {
     startMsRef.current = Date.now();
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       const s = Math.floor((Date.now() - startMsRef.current) / 1000);
-      setTimer(`${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`);
+      const display = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
+      setTimer(s >= 50 ? `${display} ⚠` : display);
     }, 500);
   }
   function stopTimer() {
@@ -105,7 +125,6 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
     setError(null);
     setResult(null);
     stopRequestedRef.current = false;
-    isToggleRef.current = false;
     awaitingStreamRef.current = true;
 
     let stream: MediaStream;
@@ -184,12 +203,21 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
     setStatusType("recording");
     startTimer();
     startWaveform();
+
+    // Limite de 1 minuto
+    maxDurationRef.current = setTimeout(() => {
+      if (mediaRecorderRef.current?.state === "recording") finalizeStop();
+    }, 60000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isProcessing, noiseOn, gateLevel]);
 
   function handlePress() {
     if (isProcessing || semCreditos) return;
+    const now = Date.now();
+    if (now - lastPressRef.current < 2000) return;
+    lastPressRef.current = now;
     if (isRecording) {
-      if (isToggleRef.current) finalizeStop();
+      finalizeStop();
       return;
     }
     unlockedAudioRef.current = new Audio();
@@ -198,21 +226,13 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
   }
 
   function handleRelease() {
-    if (awaitingStreamRef.current) { stopRequestedRef.current = true; return; }
-    if (!isRecording || isToggleRef.current) return;
-    const elapsed = Date.now() - startMsRef.current;
-    if (elapsed < 250) {
-      isToggleRef.current = true;
-      setStatus("Gravando — toque para parar");
-      return;
-    }
-    finalizeStop();
+    if (awaitingStreamRef.current) { stopRequestedRef.current = true; }
   }
 
   function finalizeStop() {
     if (!mediaRecorderRef.current) return;
+    if (maxDurationRef.current) { clearTimeout(maxDurationRef.current); maxDurationRef.current = null; }
     setIsRecording(false);
-    isToggleRef.current = false;
     mediaRecorderRef.current.stop();
   }
 
@@ -238,11 +258,18 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
         reader.readAsDataURL(blob);
       });
 
-      setStatus("Traduzindo com IA…");
+      setStatus("Traduzindo…");
       const res = await fetch("/api/traduzir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audio: base64, mimeType, sourceLang, targetLang }),
+        body: JSON.stringify({
+          audio: base64,
+          mimeType,
+          sourceLang: sourceLangRef.current,
+          targetLang: targetLangRef.current,
+          voiceA: VOICE_MAP[voiceARef.current],
+          voiceB: VOICE_MAP[voiceBRef.current],
+        }),
       });
       const data = await res.json();
 
@@ -261,7 +288,6 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
         return;
       }
 
-      // Atualizar créditos após tradução bem-sucedida
       if (data.creditos !== null && data.creditos !== undefined) {
         setCreditos(data.creditos);
         if (data.creditos <= 0) setSemCreditos(true);
@@ -269,7 +295,7 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
 
       const from = data.detectedLang || sourceLang;
       const to = from === sourceLang ? targetLang : sourceLang;
-      setResult({ transcript: data.transcript, translation: data.translation, audio: data.audio, from, to });
+      setResult({ transcript: data.transcript, translation: data.translation, transliteration: data.transliteration || "", audio: data.audio, from, to });
       setStatus(`${from} → ${to}`);
       setStatusType("done");
       if (data.audio) playAudio(data.audio);
@@ -307,43 +333,97 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
     }
   }
 
+  async function shareResult() {
+    if (!result) return;
+    if (result.audio && typeof navigator !== "undefined" && navigator.canShare) {
+      try {
+        const bytes = atob(result.audio);
+        const buf = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) buf[i] = bytes.charCodeAt(i);
+        const blob = new Blob([buf], { type: "audio/mp3" });
+        const file = new File([blob], "talkbanana.mp3", { type: "audio/mp3" });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: "TalkBanana" });
+          return;
+        }
+      } catch { /* fallback abaixo */ }
+    }
+    window.open(`https://wa.me/?text=${encodeURIComponent("🍌 " + result.translation)}`, "_blank");
+  }
+
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = speed;
   }, [speed]);
 
+  usePreventNavigation(isProcessing);
+
   const statusColor = {
     idle: "#c9a84c",
     recording: "#dc3232",
-    processing: "#f7c613",
+    processing: "#FFC107",
     done: "#4caf77",
     error: "#f87171",
   }[statusType];
 
   return (
     <div className="min-h-screen">
+
+      {/* Modal de processamento */}
+      {isProcessing && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center" style={{
+          background: "rgba(10,8,0,0.80)", backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
+        }}>
+          <div className="flex flex-col items-center gap-5 px-8 py-8 rounded-2xl text-center mx-4" style={{
+            background: "rgba(26,21,0,0.95)",
+            border: "1px solid rgba(201,168,76,0.15)",
+            boxShadow: "0 8px 40px rgba(0,0,0,0.6), 0 0 60px rgba(255,193,7,0.06)",
+            maxWidth: 320, width: "100%",
+          }}>
+            {/* Spinner */}
+            <div className="relative w-14 h-14">
+              <div className="absolute inset-0 rounded-full" style={{ border: "4px solid rgba(201,168,76,0.12)" }} />
+              <div className="absolute inset-0 rounded-full" style={{
+                border: "4px solid transparent",
+                borderTopColor: "#FFC107",
+                animation: "spin 0.9s linear infinite",
+              }} />
+            </div>
+            <p className="font-semibold text-base leading-snug" style={{ color: "#f5f0dc" }}>
+              {status}
+            </p>
+            <p className="text-xs flex items-center gap-1.5" style={{ color: "rgba(255,193,7,0.8)" }}>
+              <span>⚠️</span> Não feches nem saias desta página
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <nav className="fixed top-0 left-0 right-0 z-30" style={{
         background: "rgba(10,8,0,0.88)", backdropFilter: "blur(12px)",
         borderBottom: "1px solid rgba(201,168,76,0.12)",
       }}>
         <div className="flex items-center justify-between px-4 h-14">
-          <Link href="/dashboard" className="text-sm font-black tracking-widest uppercase flex items-center gap-2" style={{ color: "#f7c613" }}>
-            🍌 TalkBanana
+          <Link href="/dashboard">
+            <Logo size={28} variant="dark" textSize="0.9rem" />
           </Link>
           <div className="flex items-center gap-2">
-            {!isPro && creditos !== null && (
-              <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{
-                background: semCreditos ? "rgba(239,68,68,0.12)" : creditos <= 3 ? "rgba(239,68,68,0.08)" : "rgba(201,168,76,0.08)",
-                border: semCreditos ? "1px solid rgba(239,68,68,0.3)" : creditos <= 3 ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(201,168,76,0.2)",
-                color: semCreditos || creditos <= 3 ? "#f87171" : "#c9a84c",
+            <ReloadButton />
+            {isAdmin && (
+              <Link href="/admin" className="text-xs font-bold px-2.5 py-1 rounded-full" style={{
+                background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", color: "rgba(245,240,220,0.7)",
               }}>
-                {creditos} crédito{creditos !== 1 ? "s" : ""}
-              </span>
+                ⚙ Admin
+              </Link>
             )}
-            {isPro && (
+            {creditos !== null && (
               <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{
-                background: "rgba(247,198,19,0.12)", border: "1px solid rgba(247,198,19,0.3)", color: "#f7c613",
-              }}>✦ Pro</span>
+                background: semCreditos ? "rgba(239,68,68,0.12)" : creditos <= (isPro ? 50 : 3) ? "rgba(239,68,68,0.08)" : "rgba(201,168,76,0.08)",
+                border: semCreditos ? "1px solid rgba(239,68,68,0.3)" : creditos <= (isPro ? 50 : 3) ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(201,168,76,0.2)",
+                color: semCreditos || creditos <= (isPro ? 50 : 3) ? "#f87171" : "#c9a84c",
+              }}>
+                {isPro && <span style={{ color: "#FFC107" }}>✦ </span>}{creditos} crédito{creditos !== 1 ? "s" : ""}
+              </span>
             )}
           </div>
         </div>
@@ -358,26 +438,28 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
               background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)",
             }}>
               <p className="text-sm font-semibold" style={{ color: "#f87171" }}>
-                🚫 Créditos esgotados. Assine o Pro para traduções ilimitadas.
+                🚫 Créditos esgotados. Adquira um pacote ou assine o Pro.
               </p>
               <Link href="/precos" className="text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap" style={{
-                background: "rgba(247,198,19,0.15)", border: "1px solid rgba(247,198,19,0.5)", color: "#f7c613",
+                background: "rgba(255,193,7,0.15)", border: "1px solid rgba(255,193,7,0.5)", color: "#FFC107",
               }}>Assinar →</Link>
             </div>
           )}
 
-          {/* Lang selectors */}
-          <div className="flex items-center gap-3 w-full">
-            {[
-              { id: "src", val: sourceLang, set: setSourceLang, label: "Idioma A" },
-              { id: "tgt", val: targetLang, set: setTargetLang, label: "Idioma B" },
-            ].map((cfg, i) => (
-              <div key={cfg.id} className="flex-1 flex flex-col gap-1">
-                <label className="text-xs font-bold uppercase tracking-widest" style={{ color: "rgba(201,168,76,0.6)" }}>{cfg.label}</label>
+          {/* Card Idioma 01 + Card Idioma 02 */}
+          <div className="flex gap-3 w-full">
+            {([
+              { id: "src", num: "01", val: sourceLang, set: setSourceLang, voice: voiceA, setVoice: setVoiceA },
+              { id: "tgt", num: "02", val: targetLang, set: setTargetLang, voice: voiceB, setVoice: setVoiceB },
+            ] as const).map((cfg) => (
+              <div key={cfg.id} className="flex-1 rounded-2xl p-4 flex flex-col gap-2" style={{
+                background: "rgba(255,255,255,0.03)", border: "1px solid rgba(201,168,76,0.12)",
+              }}>
+                <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(201,168,76,0.5)" }}>Idioma {cfg.num}</p>
                 <select
                   value={cfg.val}
                   onChange={(e) => cfg.set(e.target.value)}
-                  className="w-full rounded-full px-4 py-2.5 text-sm font-bold"
+                  className="w-full rounded-full px-3 py-2.5 text-sm font-bold"
                   style={{
                     background: "rgba(255,255,255,0.04)", border: "1px solid rgba(201,168,76,0.2)",
                     color: "rgb(245,240,220)", appearance: "none",
@@ -385,42 +467,27 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
                 >
                   {IDIOMAS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                 </select>
+                <div className="flex gap-1">
+                  {(["feminino", "masculino"] as const).map((g) => (
+                    <button
+                      key={g}
+                      onClick={() => cfg.setVoice(g)}
+                      className="flex-1 text-[11px] font-bold py-1 rounded-full transition-all"
+                      style={{
+                        background: cfg.voice === g ? "rgba(255,193,7,0.12)" : "rgba(255,255,255,0.04)",
+                        border: cfg.voice === g ? "1px solid rgba(255,193,7,0.35)" : "1px solid rgba(201,168,76,0.12)",
+                        color: cfg.voice === g ? "#FFC107" : "rgba(201,168,76,0.4)",
+                      }}
+                    >
+                      {g === "feminino" ? "♀" : "♂"}
+                    </button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
 
-          {/* Noise filter */}
-          <div className="w-full rounded-2xl p-4 flex flex-col gap-3" style={{
-            background: "rgba(255,255,255,0.03)", border: "1px solid rgba(201,168,76,0.12)",
-          }}>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "rgba(201,168,76,0.7)" }}>Filtro de ruído</span>
-              <button
-                onClick={() => setNoiseOn(!noiseOn)}
-                className="text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 transition-all"
-                style={{
-                  background: noiseOn ? "rgba(247,198,19,0.12)" : "rgba(255,255,255,0.05)",
-                  border: noiseOn ? "1px solid rgba(247,198,19,0.4)" : "1px solid rgba(255,255,255,0.1)",
-                  color: noiseOn ? "#f7c613" : "rgba(201,168,76,0.5)",
-                }}
-              >
-                🎙 {noiseOn ? "Ativo" : "Off"}
-              </button>
-            </div>
-            {noiseOn && (
-              <div className="flex items-center gap-3">
-                <span className="text-xs" style={{ color: "rgba(201,168,76,0.6)" }}>Corte</span>
-                <input type="range" min={0} max={100} step={5} value={gateLevel}
-                  onChange={e => setGateLevel(Number(e.target.value))}
-                  className="flex-1 accent-yellow-400" />
-                <span className="text-xs font-bold w-8 text-right" style={{ color: "#f7c613" }}>
-                  {gateLevel === 0 ? "Off" : `${gateLevel}%`}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Record button */}
+          {/* Botão gravar */}
           <div className="flex flex-col items-center gap-4">
             <button
               onMouseDown={(e) => { e.preventDefault(); handlePress(); }}
@@ -433,7 +500,7 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
                 background: isRecording
                   ? "radial-gradient(circle at 50% 40%, rgba(220,50,50,0.15) 0%, #0a0800 100%)"
                   : "radial-gradient(circle at 50% 40%, rgba(18,14,0,1) 0%, #0a0800 100%)",
-                border: isRecording ? "2px solid #dc3232" : isProcessing ? "2px solid #f7c613" : "2px solid rgba(201,168,76,0.4)",
+                border: isRecording ? "2px solid #dc3232" : isProcessing ? "2px solid #FFC107" : "2px solid rgba(201,168,76,0.4)",
                 boxShadow: isRecording
                   ? "0 0 60px 10px rgba(220,50,50,0.3), 0 0 100px 30px rgba(220,50,50,0.1)"
                   : "0 0 50px 6px rgba(201,168,76,0.2), 0 0 100px 30px rgba(201,168,76,0.08)",
@@ -441,16 +508,16 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
                 touchAction: "none",
               }}
             >
-              <svg width={72} height={72} viewBox="0 0 24 24" fill="none" stroke={isRecording ? "#dc3232" : isProcessing ? "#f7c613" : "#c9a84c"} strokeWidth={1.5}>
+              <svg width={72} height={72} viewBox="0 0 24 24" fill="none" stroke={isRecording ? "#dc3232" : isProcessing ? "#FFC107" : "#c9a84c"} strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round"
                   d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
               </svg>
-              <span className="text-xs font-bold uppercase tracking-widest" style={{ color: isRecording ? "#dc3232" : isProcessing ? "#f7c613" : "rgba(201,168,76,0.8)" }}>
-                {isProcessing ? "Aguarde…" : isRecording ? (isToggleRef.current ? "Toque p/ parar" : "Gravando…") : "Segurar"}
+              <span className="text-xs font-bold uppercase tracking-widest" style={{ color: isRecording ? "#dc3232" : isProcessing ? "#FFC107" : "rgba(201,168,76,0.8)" }}>
+                {isProcessing ? "Aguarde…" : isRecording ? "Toque para parar" : "Toque para gravar"}
               </span>
             </button>
             <p className="text-xs text-center max-w-xs" style={{ color: "rgba(201,168,76,0.5)" }}>
-              Segure para gravar · Toque rápido para alternar
+              Toque para iniciar · Toque novamente para parar · Máx. 1 min
             </p>
             {isRecording && <canvas ref={canvasRef} width={300} height={48} className="rounded-xl" style={{ background: "rgba(0,0,0,0.4)" }} />}
           </div>
@@ -469,28 +536,33 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
             </div>
           )}
 
-          {/* Result */}
+          {/* Result — layout original */}
           {result && (
             <div className="w-full rounded-2xl overflow-hidden" style={{ background: "rgba(26,21,0,0.6)", backdropFilter: "blur(20px)", border: "1px solid rgba(255,255,255,0.08)" }}>
               <div className="p-4 border-b" style={{ borderColor: "rgba(255,255,255,0.07)" }}>
                 <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "rgba(201,168,76,0.6)" }}>🎙 {result.from}</p>
                 <p className="text-base leading-relaxed" style={{ color: "rgb(245,240,220)" }}>{result.transcript}</p>
               </div>
-              <div className="p-4" style={{ borderLeft: "3px solid #f7c613", background: "rgba(247,198,19,0.05)" }}>
+              <div className="p-4" style={{ borderLeft: "3px solid #FFC107", background: "rgba(255,193,7,0.05)" }}>
                 <p className="text-xs font-bold uppercase tracking-wider mb-2" style={{ color: "#c9a84c" }}>🔁 {result.to}</p>
-                <p className="text-xl font-semibold leading-relaxed" style={{ color: "#f7c613" }}>{result.translation}</p>
+                <p className="text-xl font-semibold leading-relaxed" style={{ color: "#FFC107" }}>{result.translation}</p>
                 <div className="flex items-center gap-3 mt-3">
                   <button
-                    onClick={async () => {
-                      await navigator.clipboard.writeText(result.translation).catch(() => {});
-                    }}
+                    onClick={async () => { await navigator.clipboard.writeText(result.translation).catch(() => {}); }}
                     className="text-xs font-bold flex items-center gap-1"
                     style={{ color: "#c9a84c", background: "none", border: "none", cursor: "pointer" }}
                   >
                     📋 Copiar
                   </button>
+                  <button
+                    onClick={shareResult}
+                    className="text-xs font-bold flex items-center gap-1"
+                    style={{ color: "#c9a84c", background: "none", border: "none", cursor: "pointer" }}
+                  >
+                    📤 Partilhar
+                  </button>
                   {result.audio && (
-                    <button onClick={togglePlay} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#f7c613", border: "none", cursor: "pointer" }}>
+                    <button onClick={togglePlay} className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#FFC107", border: "none", cursor: "pointer" }}>
                       {isPlaying
                         ? <svg width={16} height={16} viewBox="0 0 24 24" fill="#000"><path fillRule="evenodd" d="M6.75 5.25a.75.75 0 01.75-.75H9a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H7.5a.75.75 0 01-.75-.75V5.25zm7.5 0A.75.75 0 0115 4.5h1.5a.75.75 0 01.75.75v13.5a.75.75 0 01-.75.75H15a.75.75 0 01-.75-.75V5.25z" clipRule="evenodd" /></svg>
                         : <svg width={16} height={16} viewBox="0 0 24 24" fill="#000"><path fillRule="evenodd" d="M4.5 5.653c0-1.427 1.529-2.33 2.779-1.643l11.54 6.347c1.295.712 1.295 2.573 0 3.286L7.28 19.99c-1.25.687-2.779-.217-2.779-1.643V5.653z" clipRule="evenodd" /></svg>
@@ -502,12 +574,60 @@ export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
                     <input type="range" min={0.5} max={1} step={0.05} value={speed}
                       onChange={e => setSpeed(parseFloat(e.target.value))}
                       className="w-20 accent-yellow-400" />
-                    <span className="text-xs font-bold w-6" style={{ color: "#f7c613" }}>{speed === 1 ? "1×" : `${speed.toFixed(2)}×`}</span>
+                    <span className="text-xs font-bold w-6" style={{ color: "#FFC107" }}>{speed === 1 ? "1×" : `${speed.toFixed(2)}×`}</span>
                   </div>
                 </div>
               </div>
             </div>
           )}
+
+          {/* Card Transliteração */}
+          <div className="w-full rounded-2xl p-4 flex flex-col gap-2" style={{
+            background: "rgba(255,255,255,0.03)", border: "1px solid rgba(201,168,76,0.12)",
+          }}>
+            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(201,168,76,0.5)" }}>Transliteração</p>
+            {result?.transliteration ? (
+              <p className="text-2xl font-semibold leading-snug" style={{ color: "#f5f0dc", letterSpacing: "0.04em" }}>
+                {result.transliteration}
+              </p>
+            ) : (
+              <p className="text-xs" style={{ color: "rgba(201,168,76,0.25)" }}>
+                Grave uma frase para ver a pronúncia fonética aqui.
+              </p>
+            )}
+          </div>
+
+          {/* Card Controles */}
+          <div className="w-full rounded-2xl p-4 flex flex-col gap-3" style={{
+            background: "rgba(255,255,255,0.03)", border: "1px solid rgba(201,168,76,0.12)",
+          }}>
+            <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: "rgba(201,168,76,0.5)" }}>Controles</p>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: "rgba(201,168,76,0.7)" }}>Filtro de ruído</span>
+              <button
+                onClick={() => setNoiseOn(!noiseOn)}
+                className="text-xs font-bold px-3 py-1 rounded-full flex items-center gap-1.5 transition-all"
+                style={{
+                  background: noiseOn ? "rgba(255,193,7,0.12)" : "rgba(255,255,255,0.05)",
+                  border: noiseOn ? "1px solid rgba(255,193,7,0.4)" : "1px solid rgba(255,255,255,0.1)",
+                  color: noiseOn ? "#FFC107" : "rgba(201,168,76,0.5)",
+                }}
+              >
+                🎙 {noiseOn ? "Ativo" : "Off"}
+              </button>
+            </div>
+            {noiseOn && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs" style={{ color: "rgba(201,168,76,0.6)" }}>Corte</span>
+                <input type="range" min={0} max={100} step={5} value={gateLevel}
+                  onChange={e => setGateLevel(Number(e.target.value))}
+                  className="flex-1 accent-yellow-400" />
+                <span className="text-xs font-bold w-8 text-right" style={{ color: "#FFC107" }}>
+                  {gateLevel === 0 ? "Off" : `${gateLevel}%`}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </main>
 

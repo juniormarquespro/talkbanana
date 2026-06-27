@@ -1,7 +1,15 @@
 import type { Metadata, Viewport } from "next";
+import { Poppins } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/Providers";
 import { CookieBanner } from "@/components/CookieBanner";
+
+const poppins = Poppins({
+  subsets: ["latin"],
+  weight: ["400", "600", "700", "800", "900"],
+  variable: "--font-poppins",
+  display: "swap",
+});
 
 const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -47,8 +55,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR">
-      <body className="min-h-screen">
+    <html lang="pt-BR" className={poppins.variable}>
+      <body className={`min-h-screen ${poppins.className}`}>
         <div style={{
           position: "fixed", inset: 0, zIndex: -1,
           background: "linear-gradient(135deg, #0a0800 0%, #1a1400 50%, #0a0800 100%)",

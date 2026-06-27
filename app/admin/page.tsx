@@ -5,9 +5,9 @@ import { isAdmin } from "@/lib/is-admin";
 import AdminClient from "./AdminClient";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Admin" };
+export const metadata = { title: "Admin — TalkBanana" };
 
-function getSupabaseAdmin() {
+function getAdminClient() {
   return createAdmin(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -19,44 +19,34 @@ export default async function AdminPage() {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user || !isAdmin(user.email)) redirect("/dashboard");
 
-  const adminClient = getSupabaseAdmin();
+  const db = getAdminClient();
 
-  // Estatísticas gerais
-  const { count: totalUsers } = await adminClient
-    .from("perfis")
-    .select("*", { count: "exact", head: true });
+  const [
+    { count: totalUsers },
+    { count: proMensal },
+    { count: proAnual },
+    { count: semCreditos },
+  ] = await Promise.all([
+    db.from("perfis").select("*", { count: "exact", head: true }),
+    db.from("perfis").select("*", { count: "exact", head: true }).eq("plano", "pro_mensal"),
+    db.from("perfis").select("*", { count: "exact", head: true }).eq("plano", "pro_anual"),
+    db.from("perfis").select("*", { count: "exact", head: true }).eq("creditos", 0),
+  ]);
 
-  const { count: proMensal } = await adminClient
-    .from("perfis")
-    .select("*", { count: "exact", head: true })
-    .eq("plano", "pro_mensal");
+  const gratuitos = (totalUsers ?? 0) - (proMensal ?? 0) - (proAnual ?? 0);
+  // MRR: pro_mensal × R$59,90 + pro_anual × R$41,58 (= 499/12)
+  const mrr = Math.round(((proMensal ?? 0) * 59.90) + ((proAnual ?? 0) * (499 / 12)));
 
-  const { count: proAnual } = await adminClient
-    .from("perfis")
-    .select("*", { count: "exact", head: true })
-    .eq("plano", "pro_anual");
-
-  const { count: semCreditos } = await adminClient
-    .from("perfis")
-    .select("*", { count: "exact", head: true })
-    .eq("plano", "gratuito")
-    .eq("creditos", 0);
-
-  // Últimos 20 users
-  const { data: recentUsers } = await adminClient
-    .from("perfis")
-    .select("id, email, nome_completo, plano, creditos, created_at, onboarding_done")
-    .order("created_at", { ascending: false })
-    .limit(20);
-
-  const stats = {
-    totalUsers: totalUsers ?? 0,
-    proMensal: proMensal ?? 0,
-    proAnual: proAnual ?? 0,
-    gratuitos: (totalUsers ?? 0) - (proMensal ?? 0) - (proAnual ?? 0),
-    semCreditos: semCreditos ?? 0,
-    mrr: ((proMensal ?? 0) * 29) + ((proAnual ?? 0) * 19),
-  };
-
-  return <AdminClient stats={stats} recentUsers={recentUsers ?? []} />;
+  return (
+    <AdminClient
+      stats={{
+        totalUsers: totalUsers ?? 0,
+        proMensal: proMensal ?? 0,
+        proAnual: proAnual ?? 0,
+        gratuitos,
+        semCreditos: semCreditos ?? 0,
+        mrr,
+      }}
+    />
+  );
 }

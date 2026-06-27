@@ -1,18 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient as createServerClient } from "@supabase/supabase-js";
+import { CREDITOS_PLANO, planoFromPriceId, packFromId } from "@/lib/planos";
 
 function getSupabaseAdmin() {
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
   );
-}
-
-function planoFromPriceId(priceId: string): string {
-  if (priceId === process.env.STRIPE_PRICE_MENSAL) return "pro_mensal";
-  if (priceId === process.env.STRIPE_PRICE_ANUAL) return "pro_anual";
-  return "gratuito";
 }
 
 export async function POST(req: NextRequest) {
@@ -34,14 +29,31 @@ export async function POST(req: NextRequest) {
       const session = event.data.object as Stripe.Checkout.Session;
       const userId = session.metadata?.supabase_user_id;
       if (!userId) break;
-      const sub = await stripe.subscriptions.retrieve(session.subscription as string);
-      const priceId = sub.items.data[0]?.price.id;
-      await supabase.from("perfis").update({
-        plano: planoFromPriceId(priceId),
-        stripe_customer_id: session.customer as string,
-      }).eq("id", userId);
+
+      if (session.mode === "payment") {
+        // Compra de pacote avulso — adiciona créditos
+        const pack = packFromId(session.metadata?.pack_id ?? "");
+        if (pack) {
+          await supabase.rpc("adicionar_creditos_admin", {
+            p_user_id: userId,
+            p_quantidade: pack.creditos,
+          });
+        }
+      } else if (session.mode === "subscription") {
+        // Nova assinatura — actualiza plano e repõe créditos
+        const sub = await stripe.subscriptions.retrieve(session.subscription as string);
+        const priceId = sub.items.data[0]?.price.id;
+        const plano = planoFromPriceId(priceId);
+        const creditos = CREDITOS_PLANO[plano as keyof typeof CREDITOS_PLANO] ?? 0;
+        await supabase.from("perfis").update({
+          plano,
+          creditos,
+          stripe_customer_id: session.customer as string,
+        }).eq("id", userId);
+      }
       break;
     }
+
     case "customer.subscription.updated": {
       const sub = event.data.object as Stripe.Subscription;
       const userId = sub.metadata?.supabase_user_id;
@@ -51,6 +63,7 @@ export async function POST(req: NextRequest) {
       await supabase.from("perfis").update({ plano }).eq("id", userId);
       break;
     }
+
     case "customer.subscription.deleted": {
       const sub = event.data.object as Stripe.Subscription;
       const userId = sub.metadata?.supabase_user_id;
