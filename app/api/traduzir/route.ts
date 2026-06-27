@@ -12,6 +12,26 @@ export async function POST(req: NextRequest) {
   if (!audio || !sourceLang || !targetLang)
     return NextResponse.json({ error: "Campos obrigatórios: audio, sourceLang, targetLang" }, { status: 400 });
 
+  // Verificar créditos (Pro = ilimitado, Gratuito = débita 1)
+  const { data: perfil } = await supabase
+    .from("perfis")
+    .select("plano, creditos")
+    .eq("id", user.id)
+    .single();
+
+  const isPro = perfil?.plano === "pro_mensal" || perfil?.plano === "pro_anual";
+
+  if (!isPro) {
+    const { data: debitou } = await supabase.rpc("debitar_credito", { p_user_id: user.id });
+    if (!debitou) {
+      return NextResponse.json({
+        error: "Créditos esgotados",
+        creditos: 0,
+        upgrade: true,
+      }, { status: 402 });
+    }
+  }
+
   const OPENAI_KEY = process.env.OPENAI_API_KEY;
   const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY;
   if (!OPENAI_KEY) return NextResponse.json({ error: "OPENAI_API_KEY não configurada" }, { status: 500 });
@@ -85,10 +105,15 @@ Transcribed text: ${transcript}`,
     return NextResponse.json({ error: "Erro no TTS", detail }, { status: 500 });
   }
 
+  // Buscar créditos atualizados para devolver ao cliente
+  const creditosRestantes = isPro ? null : (perfil?.creditos ?? 0) - 1;
+
   return NextResponse.json({
     transcript,
     translation,
     debug: { sourceLang, targetLang, haikuRaw: translation },
     audio: Buffer.from(await ttsRes.arrayBuffer()).toString("base64"),
+    creditos: creditosRestantes,
+    isPro,
   });
 }

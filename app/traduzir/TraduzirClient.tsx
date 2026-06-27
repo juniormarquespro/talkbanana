@@ -15,9 +15,16 @@ const IDIOMAS = [
   { value: "Chinês simplificado", label: "🇨🇳 中文" },
 ];
 
-export default function TraduzirClient() {
+interface Props {
+  creditosIniciais: number | null;
+  isPro: boolean;
+}
+
+export default function TraduzirClient({ creditosIniciais, isPro }: Props) {
   const [sourceLang, setSourceLang] = useState("Português");
   const [targetLang, setTargetLang] = useState("English");
+  const [creditos, setCreditos] = useState(creditosIniciais);
+  const [semCreditos, setSemCreditos] = useState(!isPro && (creditosIniciais ?? 0) <= 0);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [status, setStatus] = useState("Pronto para gravar");
@@ -180,7 +187,7 @@ export default function TraduzirClient() {
   }, [isProcessing, noiseOn, gateLevel]);
 
   function handlePress() {
-    if (isProcessing) return;
+    if (isProcessing || semCreditos) return;
     if (isRecording) {
       if (isToggleRef.current) finalizeStop();
       return;
@@ -240,10 +247,24 @@ export default function TraduzirClient() {
       const data = await res.json();
 
       if (!res.ok) {
-        setError(data.error || "Erro desconhecido.");
-        setStatus("Erro.");
-        setStatusType("error");
+        if (res.status === 402) {
+          setSemCreditos(true);
+          setCreditos(0);
+          setError("Créditos esgotados. Assine o Pro para continuar.");
+          setStatus("Sem créditos.");
+          setStatusType("error");
+        } else {
+          setError(data.error || "Erro desconhecido.");
+          setStatus("Erro.");
+          setStatusType("error");
+        }
         return;
+      }
+
+      // Atualizar créditos após tradução bem-sucedida
+      if (data.creditos !== null && data.creditos !== undefined) {
+        setCreditos(data.creditos);
+        if (data.creditos <= 0) setSemCreditos(true);
       }
 
       const from = data.detectedLang || sourceLang;
@@ -309,12 +330,41 @@ export default function TraduzirClient() {
           <Link href="/dashboard" className="text-sm font-black tracking-widest uppercase flex items-center gap-2" style={{ color: "#f7c613" }}>
             🍌 TalkBanana
           </Link>
-          <span className="text-xs" style={{ color: "rgba(201,168,76,0.5)" }}>Tradução ao vivo</span>
+          <div className="flex items-center gap-2">
+            {!isPro && creditos !== null && (
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{
+                background: semCreditos ? "rgba(239,68,68,0.12)" : creditos <= 3 ? "rgba(239,68,68,0.08)" : "rgba(201,168,76,0.08)",
+                border: semCreditos ? "1px solid rgba(239,68,68,0.3)" : creditos <= 3 ? "1px solid rgba(239,68,68,0.2)" : "1px solid rgba(201,168,76,0.2)",
+                color: semCreditos || creditos <= 3 ? "#f87171" : "#c9a84c",
+              }}>
+                {creditos} crédito{creditos !== 1 ? "s" : ""}
+              </span>
+            )}
+            {isPro && (
+              <span className="text-xs font-bold px-2.5 py-1 rounded-full" style={{
+                background: "rgba(247,198,19,0.12)", border: "1px solid rgba(247,198,19,0.3)", color: "#f7c613",
+              }}>✦ Pro</span>
+            )}
+          </div>
         </div>
       </nav>
 
       <main className="pt-20 pb-24 px-4">
         <div className="max-w-lg mx-auto flex flex-col gap-6 items-center fade-up">
+
+          {/* Banner sem créditos */}
+          {semCreditos && (
+            <div className="w-full rounded-xl p-4 flex items-center justify-between gap-3" style={{
+              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.3)",
+            }}>
+              <p className="text-sm font-semibold" style={{ color: "#f87171" }}>
+                🚫 Créditos esgotados. Assine o Pro para traduções ilimitadas.
+              </p>
+              <Link href="/precos" className="text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap" style={{
+                background: "rgba(247,198,19,0.15)", border: "1px solid rgba(247,198,19,0.5)", color: "#f7c613",
+              }}>Assinar →</Link>
+            </div>
+          )}
 
           {/* Lang selectors */}
           <div className="flex items-center gap-3 w-full">

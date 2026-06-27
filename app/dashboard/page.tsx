@@ -43,6 +43,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const plano = perfil?.plano ?? "gratuito";
   const isPro = plano === "pro_mensal" || plano === "pro_anual";
+  const creditos = perfil?.creditos ?? 0;
+  const creditosBaixos = !isPro && creditos <= 3;
 
   return (
     <div className="min-h-screen">
@@ -61,6 +63,15 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               <Link href="/admin" className="px-2.5 py-1 rounded-lg text-[10px] font-bold" style={{
                 background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", color: "#f59e0b",
               }}>⚙ Admin</Link>
+            )}
+            {!isPro && (
+              <span className="px-3 py-1 rounded-full text-xs font-bold" style={{
+                background: creditosBaixos ? "rgba(239,68,68,0.12)" : "rgba(201,168,76,0.08)",
+                border: creditosBaixos ? "1px solid rgba(239,68,68,0.3)" : "1px solid rgba(201,168,76,0.2)",
+                color: creditosBaixos ? "#f87171" : "#c9a84c",
+              }}>
+                {creditos} crédito{creditos !== 1 ? "s" : ""}
+              </span>
             )}
             <span className="px-3 py-1 rounded-full text-xs font-bold" style={{
               background: isPro ? "rgba(247,198,19,0.15)" : "rgba(201,168,76,0.08)",
@@ -94,6 +105,34 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               Pronto para traduzir?
             </p>
           </div>
+
+          {/* Banner créditos baixos */}
+          {creditosBaixos && creditos > 0 && (
+            <div className="rounded-xl p-4 mb-5 flex items-center justify-between gap-3" style={{
+              background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
+            }}>
+              <p className="text-sm" style={{ color: "#f87171" }}>
+                ⚠️ Restam apenas <strong>{creditos} crédito{creditos !== 1 ? "s" : ""}</strong>. Faça upgrade para traduções ilimitadas.
+              </p>
+              <Link href="/precos" className="text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap" style={{
+                background: "rgba(247,198,19,0.15)", border: "1px solid rgba(247,198,19,0.4)", color: "#f7c613",
+              }}>Ver planos</Link>
+            </div>
+          )}
+
+          {/* Banner sem créditos */}
+          {!isPro && creditos === 0 && (
+            <div className="rounded-xl p-4 mb-5 flex items-center justify-between gap-3" style={{
+              background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.35)",
+            }}>
+              <p className="text-sm font-semibold" style={{ color: "#f87171" }}>
+                🚫 Créditos esgotados. Assine o Pro para continuar traduzindo.
+              </p>
+              <Link href="/precos" className="text-xs font-bold px-3 py-1.5 rounded-lg whitespace-nowrap" style={{
+                background: "rgba(247,198,19,0.2)", border: "1px solid rgba(247,198,19,0.6)", color: "#f7c613",
+              }}>Assinar →</Link>
+            </div>
+          )}
 
           {/* Cards */}
           <div className="grid sm:grid-cols-2 gap-4">
