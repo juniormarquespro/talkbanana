@@ -76,7 +76,7 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
     timerRef.current = setInterval(() => {
       const s = Math.floor((Date.now() - startMsRef.current) / 1000);
       const display = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-      setTimer(s >= 50 ? `${display} ⚠` : display);
+      setTimer(s >= 25 ? `${display} ⚠` : display);
     }, 500);
   }
   function stopTimer() {
@@ -207,7 +207,7 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
     // Limite de 1 minuto
     maxDurationRef.current = setTimeout(() => {
       if (mediaRecorderRef.current?.state === "recording") finalizeStop();
-    }, 60000);
+    }, 30000);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isProcessing, noiseOn, gateLevel]);
 
@@ -489,6 +489,14 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
 
           {/* Botão gravar */}
           <div className="flex flex-col items-center gap-4">
+
+            {/* Wave bars acima do botão */}
+            <div className="wave-bars" style={{ opacity: isRecording ? 1 : 0.28 }}>
+              {[0, 0.15, 0.3, 0.45, 0.3, 0.15, 0].map((delay, i) => (
+                <span key={i} className={isRecording ? "wave-active" : "wave-idle"} style={{ animationDelay: `${delay}s` }} />
+              ))}
+            </div>
+
             <button
               onMouseDown={(e) => { e.preventDefault(); handlePress(); }}
               onMouseUp={handleRelease}
@@ -516,9 +524,23 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
                 {isProcessing ? "Aguarde…" : isRecording ? "Toque para parar" : "Toque para gravar"}
               </span>
             </button>
+
             <p className="text-xs text-center max-w-xs" style={{ color: "rgba(201,168,76,0.5)" }}>
-              Toque para iniciar · Toque novamente para parar · Máx. 1 min
+              Toque para iniciar · Toque novamente para parar · Máx. 30 s
             </p>
+
+            {/* Timer grande */}
+            {timer && (
+              <div className="font-mono font-black tabular-nums" style={{
+                fontSize: "3rem", letterSpacing: "0.05em", lineHeight: 1,
+                color: timer.includes("⚠") ? "#f87171" : "#dc3232",
+                textShadow: timer.includes("⚠") ? "0 0 20px rgba(248,113,113,0.5)" : "0 0 20px rgba(220,50,50,0.4)",
+              }}>
+                {timer.replace(" ⚠", "")}
+                {timer.includes("⚠") && <span style={{ fontSize: "1.5rem", marginLeft: "0.3rem" }}>⚠</span>}
+              </div>
+            )}
+
             {isRecording && <canvas ref={canvasRef} width={300} height={48} className="rounded-xl" style={{ background: "rgba(0,0,0,0.4)" }} />}
           </div>
 
@@ -526,7 +548,6 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
           <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest" style={{ color: statusColor }}>
             <div className="w-2 h-2 rounded-full" style={{ background: statusColor, animation: statusType === "recording" || statusType === "processing" ? "blink 0.8s ease infinite" : "none" }} />
             {status}
-            {timer && <span className="font-mono">{timer}</span>}
           </div>
 
           {/* Error */}
@@ -633,6 +654,29 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
 
       <style>{`
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        .wave-bars {
+          display: flex;
+          align-items: flex-end;
+          gap: 4px;
+          height: 28px;
+          transition: opacity 0.3s ease;
+        }
+        .wave-bars span {
+          width: 4px;
+          border-radius: 3px;
+          background: #c9a84c;
+          display: block;
+        }
+        .wave-bars span.wave-idle {
+          animation: wave-idle 1.8s ease-in-out infinite;
+        }
+        .wave-bars span.wave-active {
+          background: #dc3232;
+          animation: wave-active 0.65s ease-in-out infinite;
+        }
+        @keyframes wave-idle   { 0%,100% { height: 5px; }  50% { height: 16px; } }
+        @keyframes wave-active { 0%,100% { height: 8px; }  50% { height: 28px; } }
       `}</style>
     </div>
   );
