@@ -104,10 +104,9 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
         const bH = Math.max(3, v * H * 0.95);
         const x = i * (barW + gap);
         const y = (H - bH) / 2;
-        // Gradiente: dourado → vermelho conforme amplitude
-        const r = Math.round(201 + v * 54);
-        const g = Math.round(168 - v * 118);
-        const b = Math.round(76 - v * 76);
+        const r = Math.round(74 - v * 20);
+        const g = Math.round(222 - v * 40);
+        const b = Math.round(128 - v * 60);
         ctx.fillStyle = `rgb(${r},${g},${b})`;
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(x, y, barW, bH, 2);
@@ -400,9 +399,9 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
         const bH = Math.max(4, v * H * 0.95);
         const x = i * (barW + gap);
         const y = (H - bH) / 2;
-        const r = Math.round(201 + v * 54);
-        const g = Math.round(168 - v * 118);
-        const b = Math.round(76 - v * 76);
+        const r = Math.round(74 - v * 20);
+        const g = Math.round(222 - v * 40);
+        const b = Math.round(128 - v * 60);
         ctx.fillStyle = `rgb(${r},${g},${b})`;
         ctx.beginPath();
         if (ctx.roundRect) ctx.roundRect(x, y, barW, bH, 2);
@@ -609,8 +608,7 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
               className="rounded-2xl w-full"
               style={{
                 maxWidth: 360,
-                background: "rgba(0,0,0,0.5)",
-                border: "1px solid rgba(201,168,76,0.15)",
+                background: "transparent",
                 display: isRecording ? "block" : "none",
               }}
             />
