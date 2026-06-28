@@ -382,17 +382,18 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
     analyser.smoothingTimeConstant = 0.8;
     source.connect(analyser);
 
-    const ctx = canvas.getContext("2d")!;
+    const cv = canvas;
+    const ctx = cv.getContext("2d")!;
     const bufLen = analyser.frequencyBinCount;
     const data = new Uint8Array(bufLen);
     const bars = 40;
     const gap = 3;
-    const barW = (canvas.width - gap * (bars - 1)) / bars;
+    const barW = (cv.width - gap * (bars - 1)) / bars;
 
     function draw() {
       rafRef.current = requestAnimationFrame(draw);
       analyser.getByteFrequencyData(data);
-      const W = canvas.width, H = canvas.height;
+      const W = cv.width, H = cv.height;
       ctx.clearRect(0, 0, W, H);
       for (let i = 0; i < bars; i++) {
         const v = data[i] / 255;
