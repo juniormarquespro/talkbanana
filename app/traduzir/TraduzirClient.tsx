@@ -211,7 +211,7 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
     setStatus("Gravando…");
     setStatusType("recording");
     startTimer();
-    startWaveform();
+    // startWaveform é chamado via useEffect após o canvas ser montado
 
     // Limite de 1 minuto
     maxDurationRef.current = setTimeout(() => {
@@ -359,6 +359,16 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
     }
     window.open(`https://wa.me/?text=${encodeURIComponent("🍌 " + result.translation)}`, "_blank");
   }
+
+  // Arranca/para o waveform APÓS o canvas ser montado no DOM
+  useEffect(() => {
+    if (isRecording) {
+      startWaveform();
+    } else {
+      stopWaveform();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isRecording]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = speed;
@@ -542,15 +552,18 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
               </div>
             )}
 
-            {/* VU Waveform */}
-            {isRecording && (
-              <canvas
-                ref={canvasRef}
-                width={320} height={72}
-                className="rounded-2xl w-full"
-                style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(201,168,76,0.15)", maxWidth: 360 }}
-              />
-            )}
+            {/* VU Waveform — sempre montado, visível só ao gravar */}
+            <canvas
+              ref={canvasRef}
+              width={320} height={72}
+              className="rounded-2xl w-full"
+              style={{
+                maxWidth: 360,
+                background: "rgba(0,0,0,0.5)",
+                border: "1px solid rgba(201,168,76,0.15)",
+                display: isRecording ? "block" : "none",
+              }}
+            />
           </div>
 
           {/* Status */}
