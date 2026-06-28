@@ -61,6 +61,7 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const micStreamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const maxDurationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -146,8 +147,10 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
       return;
     }
     awaitingStreamRef.current = false;
+    micStreamRef.current = stream;
 
     if (stopRequestedRef.current) {
+      micStreamRef.current = null;
       stream.getTracks().forEach(t => t.stop());
       setIsRecording(false);
       setStatus("Pronto para gravar");
@@ -198,7 +201,7 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
     mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
     mr.onstop = () => {
       stream.getTracks().forEach(t => t.stop());
-      stopWaveform();
+      micStreamRef.current = null;
       audioCtxRef.current?.close().catch(() => {});
       audioCtxRef.current = null;
       analyserRef.current = null;
@@ -360,14 +363,61 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
     window.open(`https://wa.me/?text=${encodeURIComponent("🍌 " + result.translation)}`, "_blank");
   }
 
-  // Arranca/para o waveform APÓS o canvas ser montado no DOM
+  // Waveform autónomo — cria o seu próprio AudioContext a partir do micStreamRef
   useEffect(() => {
-    if (isRecording) {
-      startWaveform();
-    } else {
-      stopWaveform();
+    if (!isRecording) {
+      cancelAnimationFrame(rafRef.current);
+      const canvas = canvasRef.current;
+      if (canvas) canvas.getContext("2d")?.clearRect(0, 0, canvas.width, canvas.height);
+      return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const stream = micStreamRef.current;
+    const canvas = canvasRef.current;
+    if (!stream || !canvas) return;
+
+    let vizCtx: AudioContext;
+    try { vizCtx = new AudioContext(); } catch { return; }
+    const source = vizCtx.createMediaStreamSource(stream);
+    const analyser = vizCtx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.8;
+    source.connect(analyser);
+
+    const ctx = canvas.getContext("2d")!;
+    const bufLen = analyser.frequencyBinCount;
+    const data = new Uint8Array(bufLen);
+    const bars = 40;
+    const gap = 3;
+    const barW = (canvas.width - gap * (bars - 1)) / bars;
+
+    function draw() {
+      rafRef.current = requestAnimationFrame(draw);
+      analyser.getByteFrequencyData(data);
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      for (let i = 0; i < bars; i++) {
+        const v = data[i] / 255;
+        const bH = Math.max(4, v * H * 0.95);
+        const x = i * (barW + gap);
+        const y = (H - bH) / 2;
+        const r = Math.round(201 + v * 54);
+        const g = Math.round(168 - v * 118);
+        const b = Math.round(76 - v * 76);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(x, y, barW, bH, 2);
+        else ctx.rect(x, y, barW, bH);
+        ctx.fill();
+      }
+    }
+    draw();
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      source.disconnect();
+      vizCtx.close().catch(() => {});
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
   }, [isRecording]);
 
   useEffect(() => {
