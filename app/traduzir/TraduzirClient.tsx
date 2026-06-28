@@ -74,9 +74,9 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
     startMsRef.current = Date.now();
     if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
-      const s = Math.floor((Date.now() - startMsRef.current) / 1000);
-      const display = `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`;
-      setTimer(s >= 25 ? `${display} ⚠` : display);
+      const elapsed = Math.floor((Date.now() - startMsRef.current) / 1000);
+      const remaining = Math.max(0, 30 - elapsed);
+      setTimer(remaining <= 5 ? `${remaining}s ⚠` : `${remaining}s`);
     }, 500);
   }
   function stopTimer() {
@@ -89,19 +89,28 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
     const ctx = canvasRef.current.getContext("2d")!;
     const bufLen = analyserRef.current.frequencyBinCount;
     const data = new Uint8Array(bufLen);
+    // Usar apenas as primeiras 40 barras (frequências mais relevantes para voz)
+    const bars = 40;
     function draw() {
       rafRef.current = requestAnimationFrame(draw);
       analyserRef.current!.getByteFrequencyData(data);
       const W = canvasRef.current!.width, H = canvasRef.current!.height;
       ctx.clearRect(0, 0, W, H);
-      const barW = W / bufLen - 1;
-      for (let i = 0; i < bufLen; i++) {
+      const gap = 3;
+      const barW = (W - gap * (bars - 1)) / bars;
+      for (let i = 0; i < bars; i++) {
         const v = data[i] / 255;
-        const bH = Math.max(2, v * H * 0.9);
-        ctx.fillStyle = `hsl(42,70%,${45 + v * 25}%)`;
+        const bH = Math.max(3, v * H * 0.95);
+        const x = i * (barW + gap);
+        const y = (H - bH) / 2;
+        // Gradiente: dourado → vermelho conforme amplitude
+        const r = Math.round(201 + v * 54);
+        const g = Math.round(168 - v * 118);
+        const b = Math.round(76 - v * 76);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
         ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(i * (barW + 1), (H - bH) / 2, barW, bH, 1);
-        else ctx.rect(i * (barW + 1), (H - bH) / 2, barW, bH);
+        if (ctx.roundRect) ctx.roundRect(x, y, barW, bH, 2);
+        else ctx.rect(x, y, barW, bH);
         ctx.fill();
       }
     }
@@ -490,24 +499,6 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
           {/* Botão gravar */}
           <div className="flex flex-col items-center gap-4">
 
-            {/* Wave bars acima do botão */}
-            <div style={{ display: "flex", alignItems: "flex-end", gap: 4, height: 32, opacity: isRecording ? 1 : 0.3, transition: "opacity 0.3s" }}>
-              {[0, 0.15, 0.3, 0.45, 0.3, 0.15, 0].map((delay, i) => (
-                <span key={i} style={{
-                  display: "block",
-                  width: 4,
-                  height: 6,
-                  borderRadius: 3,
-                  background: isRecording ? "#dc3232" : "#c9a84c",
-                  animationName: isRecording ? "waveActive" : "waveIdle",
-                  animationDuration: isRecording ? "0.65s" : "1.8s",
-                  animationTimingFunction: "ease-in-out",
-                  animationIterationCount: "infinite",
-                  animationDelay: `${delay}s`,
-                }} />
-              ))}
-            </div>
-
             <button
               onMouseDown={(e) => { e.preventDefault(); handlePress(); }}
               onMouseUp={handleRelease}
@@ -540,19 +531,26 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
               Toque para iniciar · Toque novamente para parar · Máx. 30 s
             </p>
 
-            {/* Timer grande */}
+            {/* Timer decrescente */}
             {timer && (
               <div className="font-mono font-black tabular-nums" style={{
-                fontSize: "3rem", letterSpacing: "0.05em", lineHeight: 1,
+                fontSize: "2rem", letterSpacing: "0.04em", lineHeight: 1,
                 color: timer.includes("⚠") ? "#f87171" : "#dc3232",
-                textShadow: timer.includes("⚠") ? "0 0 20px rgba(248,113,113,0.5)" : "0 0 20px rgba(220,50,50,0.4)",
+                textShadow: timer.includes("⚠") ? "0 0 16px rgba(248,113,113,0.5)" : "0 0 16px rgba(220,50,50,0.35)",
               }}>
-                {timer.replace(" ⚠", "")}
-                {timer.includes("⚠") && <span style={{ fontSize: "1.5rem", marginLeft: "0.3rem" }}>⚠</span>}
+                {timer.replace(" ⚠", "")}{timer.includes("⚠") && " ⚠"}
               </div>
             )}
 
-            {isRecording && <canvas ref={canvasRef} width={300} height={48} className="rounded-xl" style={{ background: "rgba(0,0,0,0.4)" }} />}
+            {/* VU Waveform */}
+            {isRecording && (
+              <canvas
+                ref={canvasRef}
+                width={320} height={72}
+                className="rounded-2xl w-full"
+                style={{ background: "rgba(0,0,0,0.5)", border: "1px solid rgba(201,168,76,0.15)", maxWidth: 360 }}
+              />
+            )}
           </div>
 
           {/* Status */}
@@ -664,9 +662,7 @@ export default function TraduzirClient({ creditosIniciais, isPro, isAdmin }: Pro
       </main>
 
       <style>{`
-        @keyframes blink      { 0%,100%{opacity:1}  50%{opacity:0.3} }
-        @keyframes waveIdle   { 0%,100%{height:5px} 50%{height:16px} }
-        @keyframes waveActive { 0%,100%{height:8px} 50%{height:32px} }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
       `}</style>
     </div>
   );
